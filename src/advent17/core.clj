@@ -1,7 +1,12 @@
 (ns advent17.core
-  (:gen-class))
+  (:gen-class)
+  (:require [advent17.one]
+             [advent17.two]))
+
+(def days {
+  "one" advent17.one/day
+  "two" advent17.two/day})
 
 (defn -main
-  "I don't do a whole lot ... yet."
   [& args]
-  (println "Hello, World!"))
+  ((days (first args))))
