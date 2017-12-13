@@ -4,3 +4,6 @@
   (cond (nil? head) nil
         (pred head) head
         :else (firstp pred tail)))
+
+(defn anti-filter [pred coll]
+  (filter #(not (pred %)) coll))
