@@ -15,7 +15,9 @@
             [advent17.thirteen]
             [advent17.fourteen]
             [advent17.fifteen]
-            [advent17.sixteen]))
+            [advent17.sixteen]
+            [advent17.seventeen]
+            [advent17.eighteen]))
 
 (def days {
   "one" advent17.one/day
@@ -33,7 +35,9 @@
   "thirteen" advent17.thirteen/day
   "fourteen" advent17.fourteen/day
   "fifteen" advent17.fifteen/day
-  "sixteen" advent17.sixteen/day})
+  "sixteen" advent17.sixteen/day
+  "seventeen" advent17.seventeen/day
+  "eighteen" advent17.eighteen/day})
 
 (defn -main
   [& args]
