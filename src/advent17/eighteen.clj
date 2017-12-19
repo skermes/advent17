@@ -3,16 +3,13 @@
             [clojure.pprint :as pprint]
             [advent17.shared :as shared]))
 
-(def example-input "set a 1
-add a 2
-mul a a
-mod a 5
-snd a
-set a 0
+(def example-input "snd 1
+snd 2
+snd p
 rcv a
-jgz a -1
-set a 1
-jgz a -2")
+rcv b
+rcv c
+rcv d")
 
 (def puzzle-input "set i 31
 set a 1
@@ -71,7 +68,7 @@ jgz a -19")
 
 (defmethod parse-instruction "snd" [line]
   (let [[_ value] (tokens line)]
-    {:instruction :sound :value (parse-value value)}))
+    {:instruction :send :value (parse-value value)}))
 
 (defmethod parse-instruction "set" [line]
   (let [[_ register value] (tokens line)]
@@ -91,7 +88,7 @@ jgz a -19")
 
 (defmethod parse-instruction "rcv" [line]
   (let [[_ register] (tokens line)]
-    {:instruction :recover :value register}))
+    {:instruction :receive :register register}))
 
 (defmethod parse-instruction "jgz" [line]
   (let [[_ value offset] (tokens line)]
@@ -102,12 +99,16 @@ jgz a -19")
 (defn parse-input [text]
   (mapv parse-instruction (s/split-lines text)))
 
-(defn new-machine [instructions]
-  {:registers {}
+(defn new-machine [instructions program-id]
+  {:registers {"p" program-id}
    :instructions instructions
    :pointer 0
-   :last-sound-played nil
-   :recovered-value nil})
+   :outgoing-messages []
+   :incoming-messages []
+   :blocked false
+   :instruction-counter 0
+   :all-received-messages []
+   :all-sent-messages []})
 
 (defn get-value [machine value]
   (if (string? value)
@@ -116,9 +117,10 @@ jgz a -19")
 
 (defmulti eval-instruction (fn [machine instruction] (:instruction instruction)))
 
-(defmethod eval-instruction :sound [machine {value :value}]
+(defmethod eval-instruction :send [{msgs :outgoing-messages :as machine} {value :value}]
   (assoc machine
-         :last-sound-played (get-value machine value)))
+         :outgoing-messages (conj msgs (get-value machine value))
+         :all-sent-messages (conj (:all-sent-messages machine) (get-value machine value))))
 
 (defmethod eval-instruction :set [machine {register :register value :value}]
   (assoc-in machine [:registers register] (get-value machine value)))
@@ -135,37 +137,77 @@ jgz a -19")
   (assoc-in machine [:registers register]
                     (mod (get-value machine register) (get-value machine value))))
 
-(defmethod eval-instruction :recover [machine {value :value}]
-  (if (zero? (get-value machine value))
-      machine
-      (assoc machine :recovered-value (:last-sound-played machine))))
+(defmethod eval-instruction :receive [machine {register :register}]
+  (let [{[first-msg & rest-msgs] :incoming-messages pointer :pointer} machine]
+    (if (nil? first-msg)
+        (assoc machine :blocked true :pointer pointer)
+        (-> machine
+            (assoc-in [:registers register] first-msg)
+            (assoc :incoming-messages (vec rest-msgs))
+            (assoc :pointer (+ pointer 1))
+            (assoc :all-received-messages (conj (:all-received-messages machine) first-msg))))))
 
 (defmethod eval-instruction :jump-greater-than-zero [machine {value :value offset :offset}]
   (let [actual-offset (if (> (get-value machine value) 0) (get-value machine offset) 1)]
     (assoc machine :pointer (+ (:pointer machine) actual-offset))))
 
-(def sets-pointer? #{:jump-greater-than-zero})
+(def sets-pointer? #{:jump-greater-than-zero :receive})
 
-(defn do-instruction [{pointer :pointer :as machine} i]
-  (let [instruction (get-in machine [:instructions pointer])
-        evaled-machine (eval-instruction machine instruction)]
-    (if (sets-pointer? (:instruction instruction))
-        evaled-machine
-        (assoc evaled-machine :pointer (+ pointer 1)))))
+(defn set-pointer [machine instruction]
+  (if (sets-pointer? (:instruction instruction))
+      machine
+      (assoc machine :pointer (+ (:pointer machine) 1))))
 
-(defn machine-states [machine]
-  (reductions do-instruction machine (range)))
+(defn set-instruction-counter [machine]
+  (assoc machine :instruction-counter (+ (:instruction-counter machine) 1)))
 
-(defn part-one [] (->> puzzle-input
-                       parse-input
-                       new-machine
-                       machine-states
-                       (shared/firstp #(not (nil? (:recovered-value %))))
-                       :recovered-value))
+(defn do-instruction [{pointer :pointer counter :instruction-counter :as machine}]
+  (let [instruction (get-in machine [:instructions pointer])]
+    (-> machine
+        (eval-instruction instruction)
+        (set-pointer instruction)
+        set-instruction-counter)))
 
-(defn part-two [] "day eighteen part two")
+(defn set-message-queues [[machine-0 machine-1]]
+  [(assoc machine-0 :incoming-messages (:outgoing-messages machine-1)
+                    :outgoing-messages [])
+   (assoc machine-1 :incoming-messages (:outgoing-messages machine-0)
+                    :outgoing-messages [])])
+
+(defn reset-machine [machine]
+  (assoc machine :blocked false :instruction-counter 0))
+
+(defn run-until-blocked [machine]
+  (if (:blocked machine)
+      machine
+      (recur (do-instruction machine))))
+
+(defn run-until-deadlock [machines]
+  (let [blocked-machines (map run-until-blocked machines)
+        total-instructions (reduce + (map :instruction-counter blocked-machines))]
+        ; If each machine ran one instruction, they all blocked immediately, i.e., deadlock
+    (if (= total-instructions (count machines))
+        machines
+        (recur (map reset-machine (set-message-queues blocked-machines))))))
+
+;; Part one and part two are different enough that I don't want to bother
+;; getting both of them to run in one codebase.
+; (defn machine-states [machine]
+;   (reductions do-instruction machine (range)))
+;
+; (defn part-one [] (->> puzzle-input
+;                        parse-input
+;                        new-machine
+;                        machine-states
+;                        (shared/firstp #(not (nil? (:recovered-value %))))
+;                        :recovered-value))
+
+(defn part-two []
+  (let [instructions (parse-input puzzle-input)
+        machines [(new-machine instructions 0) (new-machine instructions 1)]]
+    (count (:all-sent-messages (nth (run-until-deadlock machines) 1)))))
 
 (defn day []
-  (pprint/pprint (time (part-one)))
-  (println)
-  (println (time (part-two))))
+  ; (pprint/pprint (time (part-one)))
+  ; (println)
+  (pprint/pprint (time (part-two))))
