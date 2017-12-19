@@ -49,3 +49,13 @@
        (sparse-hash starting-knots)
        dense-hash
        knot-hash-str))
+
+(defn index-of
+  ([coll x] (index-of coll x 0))
+  ([[head & tail] x idx]
+    (cond (nil? head) nil
+          (= head x) idx
+          :else (recur tail x (+ idx 1)))))
+
+(defn re-matches? [re s]
+  (not (nil? (re-matches re s))))
